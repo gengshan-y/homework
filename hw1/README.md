@@ -15,6 +15,18 @@ In `experts/`, the provided expert policies are:
 The name of the pickle file corresponds to the name of the gym environment.
 
 # Notes
-- use more rollouts
-- use larger lr and more epochs
-- current: 0.28 in val
+to get better results:
+- use more rollouts & more epochs
+- DAG
+
+# Results
+<p align="center">
+  <img width="460" height="300" src="./Ant-v1.png">
+</p>
+
+<p align="center">
+  <img width="460" height="300" src="./Hopper-v1.png">
+</p>
+from which we can see:
+- Hopper-v1 is more difficult to train by behavioral cloning than Ant-v1.
+- DAgger helps Hopper-v1 agent achieves comparable results to the expert.
