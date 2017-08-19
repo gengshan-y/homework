@@ -28,5 +28,6 @@ to get better results:
   <img width="460" height="300" src="./Hopper-v1.png">
 </p>
 from which we can see:
+
 - Hopper-v1 is more difficult to train by behavioral cloning than Ant-v1.
 - DAgger helps Hopper-v1 agent achieves comparable results to the expert.

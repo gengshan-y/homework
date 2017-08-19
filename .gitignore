@@ -89,4 +89,6 @@ ENV/
 .ropeproject
 
 *.params
+*.pkl
 *.swp
+*.bk
