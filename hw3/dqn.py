@@ -130,6 +130,12 @@ def learn(env,
     # YOUR CODE HERE
 
     ######
+    target_q_net = q_func(obs_tp1_float, num_actions, scope='target_q_func', reuse=False)
+    q_net = q_func(obs_t_float, num_actions, scope='q_func', reuse=False)
+    x = (rew_t_ph + gamma * tf.reduce_max(target_q_net) - q_net)
+    total_error = tf.sqrt(tf.reduce_sum(tf.square(x), 1, keep_dims=True))    
+    q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='q_func')
+    target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_q_func')
 
     # construct optimization op (with gradient clipping)
     learning_rate = tf.placeholder(tf.float32, (), name="learning_rate")
@@ -197,6 +203,17 @@ def learn(env,
         # YOUR CODE HERE
 
         #####
+        replay_buffer.store_frame(last_obs)
+        q_input = replay_buffer.encode_recent_observation()
+        action = np.argmax(session.run(q_func,feed_dict = {obs_t_float:q_input, num_actions:num_actions}))
+        obs, reward, done, info = env.step(action)
+        idx = replay_buffer.store_frame(obs)
+        replay_buffer.store_effect(idx, action, reward, done)
+
+        if done:
+            obs = env.reset()
+        last_obs = obs
+        
 
         # at this point, the environment should have been advanced one step (and
         # reset if done was true), and last_obs should point to the new latest
@@ -247,6 +264,23 @@ def learn(env,
             # YOUR CODE HERE
 
             #####
+            obs_batch, act_batch, rew_batch, next_obs_batch, done_mask = replay_buffer.sample(batch_size)
+            if not model_initialized:
+              initialize_interdependent_variables(session, tf.global_variables(), {
+                  obs_t_ph: obs_t_batch,
+                  obs_tp1_ph: obs_tp1_batch,
+              })
+              model_initialized = True
+            
+            session.run(train_fn, feed_dict={            
+                obs_t_ph:obs_batch,
+                act_t_ph:act_batch,
+                rew_t_ph:rew_batch,
+                obs_tp1_ph:next_obs_batch,
+                done_mask_ph:done_mask})
+
+            if num_param_updates % target_update_freq == 0:
+                session.run(update_target_fn)
 
         ### 4. Log progress
         episode_rewards = get_wrapper_by_name(env, "Monitor").get_episode_rewards()
