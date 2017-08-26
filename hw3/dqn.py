@@ -131,17 +131,20 @@ def learn(env,
 
     ######
     target_q_net = q_func(obs_tp1_float, num_actions, scope='target_q_func', reuse=False)
-    q_net = q_func(obs_t_float, num_actions, scope='q_func', reuse=False)
-    x = (rew_t_ph + gamma * tf.reduce_max(target_q_net) - q_net)
-    total_error = tf.sqrt(tf.reduce_sum(tf.square(x), 1, keep_dims=True))    
+    q_net = q_func(obs_t_float, num_actions, scope='q_func', reuse=False)  # Q(s,prev_a)
+    one_hot_act = tf.one_hot(act_t_ph, depth=num_actions, dtype=tf.float32, name="action_one_hot")
+    x = (rew_t_ph + gamma * tf.reduce_max(target_q_net) - tf.reduce_sum(one_hot_act*q_net,axis=1))
+    total_error = tf.square(x)
     q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='q_func')
     target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_q_func')
 
     # construct optimization op (with gradient clipping)
     learning_rate = tf.placeholder(tf.float32, (), name="learning_rate")
     optimizer = optimizer_spec.constructor(learning_rate=learning_rate, **optimizer_spec.kwargs)
+
     train_fn = minimize_and_clip(optimizer, total_error,
                  var_list=q_func_vars, clip_val=grad_norm_clipping)
+
 
     # update_target_fn will be called periodically to copy Q network to target Q network
     update_target_fn = []
@@ -204,15 +207,17 @@ def learn(env,
 
         #####
         replay_buffer.store_frame(last_obs)
-        q_input = replay_buffer.encode_recent_observation()
-        action = np.argmax(session.run(q_func,feed_dict = {obs_t_float:q_input, num_actions:num_actions}))
-        obs, reward, done, info = env.step(action)
-        idx = replay_buffer.store_frame(obs)
-        replay_buffer.store_effect(idx, action, reward, done)
+        if model_initialized:
+            q_input = replay_buffer.encode_recent_observation()
+            q_input = np.expand_dims(q_input,axis=0)
+            action = np.argmax(session.run(q_net,feed_dict = {obs_t_float:q_input}))
+            obs, reward, done, info = env.step(action)
+            idx = replay_buffer.store_frame(obs)
+            replay_buffer.store_effect(idx, action, reward, done)
 
-        if done:
-            obs = env.reset()
-        last_obs = obs
+            if done:
+                obs = env.reset()
+            last_obs = obs
         
 
         # at this point, the environment should have been advanced one step (and
@@ -264,7 +269,7 @@ def learn(env,
             # YOUR CODE HERE
 
             #####
-            obs_batch, act_batch, rew_batch, next_obs_batch, done_mask = replay_buffer.sample(batch_size)
+            obs_t_batch, act_batch, rew_batch, obs_tp1_batch, done_mask = replay_buffer.sample(batch_size)
             if not model_initialized:
               initialize_interdependent_variables(session, tf.global_variables(), {
                   obs_t_ph: obs_t_batch,
@@ -272,12 +277,14 @@ def learn(env,
               })
               model_initialized = True
             
-            session.run(train_fn, feed_dict={            
-                obs_t_ph:obs_batch,
+            # act_batch = np.zeros((32,6))
+            session.run(train_fn, feed_dict={
+                obs_t_ph:obs_t_batch,
                 act_t_ph:act_batch,
                 rew_t_ph:rew_batch,
-                obs_tp1_ph:next_obs_batch,
-                done_mask_ph:done_mask})
+                obs_tp1_ph:obs_tp1_batch,
+                done_mask_ph:done_mask,
+                learning_rate:optimizer_spec.lr_schedule.value(t)})
 
             if num_param_updates % target_update_freq == 0:
                 session.run(update_target_fn)
